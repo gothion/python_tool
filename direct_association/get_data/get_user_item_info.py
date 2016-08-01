@@ -18,6 +18,8 @@ def get_user_and_item_info():
     hive_client = HiveClient()
     process_table(hive_client, 'temp.positive_sample_sz')
     process_table(hive_client, 'temp.negative_sample_sz')
+    process_table(hive_client, 'temp.positive_sample_sz_history')
+    process_table(hive_client, 'temp.negative_sample_sz_history')
 
     hive_client.close()
 

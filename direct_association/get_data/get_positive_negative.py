@@ -27,6 +27,14 @@ def get_positive_and_negative_data(day_num=7):
     get_negative_sample(hive_client, day_num)
     filter_friends_action(hive_client,
                           'temp.negative_token_sz', 'temp.negative_sample_sz')
+
+    get_users_positive_data_history(hive_client, day_num)
+    filter_friends_action(hive_client,
+                          'temp.click_positive_token_photo_id_sz_history', 'temp.positive_sample_sz_history')
+    get_negative_sample_history(hive_client, day_num)
+    filter_friends_action(hive_client,
+                          'temp.negative_token_sz_history', 'temp.negative_sample_sz_history')
+
     hive_client.close()
 
 
@@ -60,6 +68,22 @@ def get_users_before_days(hive_client, day_num):
     hive_client.execute_no_fetch(hql)
 
 
+def get_users_positive_data_history(hive_client, day_num):
+    table_name = 'temp.click_positive_token_photo_id_sz_history'
+    input_table_name = 'temp.click_users_sz'
+    field_info = 'token string, photo_id string, date int '
+    _create_table(hive_client, table_name, field_info)
+    yesterday = time_helper.get_yesterday()
+    day_former = time_helper.get_day_before(yesterday, day_num * 2)
+    day_later = time_helper.get_day_before(yesterday, day_num)
+
+    hql = 'INSERT OVERWRITE TABLE {0} ' \
+          '  SELECT distinct b.token as token, b.photo_id as photo_id, date FROM {1} a ' \
+          '  JOIN  web_data.stats_photo_detail b ON(a.token=b.token) WHERE where b.date>={2} and b.date<{3} ' \
+          ' '.format(table_name, input_table_name, day_former, day_later)
+    hive_client.execute_no_fetch(hql)
+
+
 def get_users_positive_data(hive_client, day_num):
     table_name = 'temp.click_positive_token_photo_id_sz'
     input_table_name = 'temp.click_users_sz'
@@ -88,11 +112,11 @@ def filter_friends_action(hive_client, input_table, table_name):
     # table_name = 'temp.positive_sample_sz'
     user_token_map = 'temp.user_id_token_map'
     # origin_table = 'temp.click_positive_token_photo_id_sz'
-    field_info = 'user_id bigint, action_user_id bigint, photo_id, date int '
+    field_info = 'user_id bigint, action_user_id bigint, photo_id bigint, date int '
     _create_table(hive_client, table_name, field_info)
 
     hql = 'INSERT OVERWRITE TABLE {0} ' \
-          ' SELECT c.user_id, b.user_id as action_user_id, a.photo_id, a.date '\
+          ' SELECT c.user_id, b.user_id as action_user_id, a.photo_id , a.date '\
           ' FROM {1} a ' \
           ' JOIN {2} b ON(a.token=b.token) '\
           ' JOIN mysql_data.photo c ON(a.photo_id = c.id) ' \
@@ -117,6 +141,27 @@ def get_negative_sample(hive_client, day_num):
           ' where  c.photo_id is NULL '.format(output_table, input_table2, input_table3, input_table1, days_before)
     hive_client.execute_no_fetch(hql)
 
+
+def get_negative_sample_history(hive_client, day_num):
+    output_table = 'temp.negative_token_sz_history'
+    input_table1 = 'temp.click_positive_token_photo_id_sz'
+    create_hql = 'CREATE TABLE  IF NOT EXISTS {0} like {1} '.format(output_table, input_table1)
+    hive_client.execute_no_fetch(create_hql)
+    yesterday = time_helper.get_yesterday()
+    day_former = time_helper.get_day_before(yesterday, day_num * 2)
+    day_later = time_helper.get_day_before(yesterday, day_num)
+    input_table2 = 'web_data.stats1_faxianbg'
+    input_table3 = 'temp.click_users_sz'
+
+    hql = ' INSERT OVERWRITE TABLE {0}  ' \
+          '  SELECT distinct a.token , a.photo_id , a. date FROM ' \
+          '    ( SELECT distinct a.token , a.photo_id , a. date  FROM {1} a ' \
+          '      JOIN {2} b ON(a.token=b.token) where a.date>={4} and a.date<{5}) a ' \
+          ' LEFT OUTER JOIN {3} c ON(a.token=c.token and a.photo_id = c.photo_id) ' \
+          ' where  c.photo_id is NULL '.format(output_table,
+                                               input_table2, input_table3, input_table1, day_former, day_later)
+
+    hive_client.execute_no_fetch(hql)
 
 if __name__ == '__main__':
     get_positive_and_negative_data()
